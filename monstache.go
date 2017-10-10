@@ -426,6 +426,31 @@ func opIDToString(op *gtm.Op) string {
 	return opIDStr
 }
 
+// This function recursively passes though a map and finds all otto.Value, that could be exported
+/// This is necessary in case, when you need to export any arrays from javascript to golang
+func exportOttoValues(obj map[string]interface{}) (map[string]interface{}) {
+	var obj2 = make(map[string]interface{})
+
+	for k := range obj {
+		switch obj[k].(type) {
+		case otto.Value:
+			exportedValue, err := obj[k].(otto.Value).Export()
+
+			if err == nil {
+				obj2[k] = exportedValue
+			} else {
+				obj2[k] = obj[k]
+			}
+		case map[string]interface {}:
+			obj2[k] = exportOttoValues(obj[k].(map[string]interface{}))
+		default:
+			obj2[k] = obj[k]
+		}
+	}
+
+	return obj2;
+}
+
 func mapDataJavascript(op *gtm.Op) error {
 	if mapEnvs == nil {
 		return nil
@@ -437,12 +462,14 @@ func mapDataJavascript(op *gtm.Op) error {
 		}
 		if strings.ToLower(val.Class()) == "object" {
 			data, err := val.Export()
+			data = exportOttoValues(data.(map[string]interface{}))
+
 			if err != nil {
 				return err
 			} else if data == val {
 				return errors.New("exported function must return an object")
 			} else {
-				op.Data = data.(map[string]interface{})
+				op.Data = exportOttoValues(data.(map[string]interface{}))
 			}
 		} else {
 			indexed, err := val.ToBoolean()

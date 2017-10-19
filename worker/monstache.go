@@ -472,7 +472,6 @@ func mapDataJavascript(op *gtm.Op, channelNumber int) error {
 		}
 		if strings.ToLower(val.Class()) == "object" {
 			data, err := val.Export()
-			fmt.Println("MAPPED TO JS [1]!")
 			data = exportOttoValues(data.(map[string]interface{}))
 
 			if err != nil {
@@ -480,11 +479,9 @@ func mapDataJavascript(op *gtm.Op, channelNumber int) error {
 			} else if data == val {
 				return errors.New("exported function must return an object")
 			} else {
-				fmt.Println("MAPPED TO JS [2]!")
 				op.Data = exportOttoValues(data.(map[string]interface{}))
 			}
 		} else {
-			fmt.Println("NOT AN OBJECT!")
 			indexed, err := val.ToBoolean()
 			if err != nil {
 				return err

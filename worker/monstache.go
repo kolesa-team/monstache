@@ -441,19 +441,21 @@ func exportOttoValues(obj map[string]interface{}) (map[string]interface{}) {
 
 	for k := range obj {
 		switch obj[k].(type) {
-		case otto.Value:
-			exportedValue, err := obj[k].(otto.Value).Export()
+			case otto.Value:
+				exportedValue, err := obj[k].(otto.Value).Export()
 
-			if err == nil {
-				obj2[k] = exportedValue
-			} else {
+				if err == nil {
+					obj2[k] = exportedValue
+				} else {
+					obj2[k] = obj[k]
+				}
+			case map[string]interface {}:
+				obj2[k] = exportOttoValues(obj[k].(map[string]interface{}))
+			case gtm.OpLogEntry:
+				obj2[k] = exportOttoValues(obj[k].(gtm.OpLogEntry))
+			default:
 				obj2[k] = obj[k]
 			}
-		case map[string]interface {}:
-			obj2[k] = exportOttoValues(obj[k].(map[string]interface{}))
-		default:
-			obj2[k] = obj[k]
-		}
 	}
 
 	return obj2;
@@ -470,6 +472,7 @@ func mapDataJavascript(op *gtm.Op, channelNumber int) error {
 		}
 		if strings.ToLower(val.Class()) == "object" {
 			data, err := val.Export()
+			fmt.Println("MAPPED TO JS [1]!")
 			data = exportOttoValues(data.(map[string]interface{}))
 
 			if err != nil {
@@ -477,9 +480,11 @@ func mapDataJavascript(op *gtm.Op, channelNumber int) error {
 			} else if data == val {
 				return errors.New("exported function must return an object")
 			} else {
+				fmt.Println("MAPPED TO JS [2]!")
 				op.Data = exportOttoValues(data.(map[string]interface{}))
 			}
 		} else {
+			fmt.Println("NOT AN OBJECT!")
 			indexed, err := val.ToBoolean()
 			if err != nil {
 				return err

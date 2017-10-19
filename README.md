@@ -28,6 +28,10 @@ You will also want to ensure that automatic index creation is not disabled in el
 
 monstache is not bi-directional.  It only syncs from mongodb to elasticsearch.
 
+### Mongo sharding ###
+
+To start monstache in mode that supports MongoS, specify console parameter --use-mongos=true
+
 ### Documentation ###
 
 See the [monstache site](https://rwynn.github.io/monstache-site/) for information on configuration and usage.

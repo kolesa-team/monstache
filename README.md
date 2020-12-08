@@ -1,34 +1,25 @@
 # monstache
-a go daemon which syncs mongodb to elasticsearch in near realtime
+a go daemon that syncs mongodb to elasticsearch in realtime
 
-<img src="https://raw.github.com/rwynn/monstache/master/images/monstache.png"/>
+[![Monstache CI](https://github.com/rwynn/monstache/workflows/Monstache%20CI/badge.svg?branch=rel6)](https://github.com/rwynn/monstache/actions?query=branch%3Arel6)
+[![Go Report Card](https://goreportcard.com/badge/github.com/rwynn/monstache)](https://goreportcard.com/report/github.com/rwynn/monstache)
 
-### Install ###
+### Version 6
 
-You can download monstache binaries from the [Releases](https://github.com/rwynn/monstache/releases) page.
+This version of monstache is designed for MongoDB 3.6+ and Elasticsearch 7.0+.  It uses the official MongoDB
+golang driver and the community supported Elasticsearch driver from olivere.
 
-Or you can build monstache from source using go get
+Some of the monstache settings related to MongoDB have been removed in this version as they are now supported in the 
+[connection string](https://github.com/mongodb/mongo-go-driver/blob/v1.0.0/x/network/connstring/connstring.go)
 
-	go get github.com/rwynn/monstache
+### Changes from previous versions
 
-### Getting Started ###
+Monstache now defaults to use change streams instead of tailing the oplog for changes.  Without any configuration
+monstache watches the entire MongoDB deployment.  You can specify specific namespaces to watch by setting the option
+`change-stream-namespaces` to an array of strings.
 
-Since monstache uses the mongodb oplog to tail events it is required that mongodb is configured to produce an oplog.
+The interface for golang plugins has changed due to the switch to the new driver. Previously the API exposed
+a `Session` field typed as a `*mgo.Session`.  Now that has been replaced with a `MongoClient` field which has the type
+`*mongo.Client`. 
 
-This can be ensured by doing one of the following:
-+ Setting up [replica sets](http://docs.mongodb.org/manual/tutorial/deploy-replica-set/)
-+ Passing --master to the mongod process
-+ Setting the following in /etc/mongod.conf
-
-	```
-	master = true
-	```
-
-You will also want to ensure that automatic index creation is not disabled in elasticsearch.yml.
-
-monstache is not bi-directional.  It only syncs from mongodb to elasticsearch.
-
-### Documentation ###
-
-See the [monstache site](https://rwynn.github.io/monstache-site/) for information on configuration and usage.
-
+See the MongoDB go driver docs for details on how to use this client.

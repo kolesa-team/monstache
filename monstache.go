@@ -42,6 +42,7 @@ import (
 	_ "github.com/robertkrimen/otto/underscore"
 	"github.com/rwynn/gtm/v2"
 	"github.com/rwynn/gtm/v2/consistent"
+	"github.com/rwynn/monstache/internal"
 	"github.com/rwynn/monstache/monstachemap"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/bsontype"
@@ -129,32 +130,33 @@ type buildInfo struct {
 type stringargs []string
 
 type indexClient struct {
-	gtmCtx      *gtm.OpCtxMulti
-	config      *configOptions
-	mongo       *mongo.Client
-	mongoConfig *mongo.Client
-	bulk        *elastic.BulkProcessor
-	bulkStats   *elastic.BulkProcessor
-	client      *elastic.Client
-	hsc         *httpServerCtx
-	fileWg      *sync.WaitGroup
-	indexWg     *sync.WaitGroup
-	processWg   *sync.WaitGroup
-	relateWg    *sync.WaitGroup
-	opsConsumed chan bool
-	closeC      chan bool
-	doneC       chan int
-	enabled     bool
-	lastTs      primitive.Timestamp
-	lastTsSaved primitive.Timestamp
-	tokens      bson.M
-	indexC      chan *gtm.Op
-	processC    chan *gtm.Op
-	fileC       chan *gtm.Op
-	relateC     chan *gtm.Op
-	filter      gtm.OpFilter
-	statusReqC  chan *statusRequest
-	sigH        *sigHandler
+	gtmCtx        *gtm.OpCtxMulti
+	oplogResumtTs internal.OplogResumeTs
+	config        *configOptions
+	mongo         *mongo.Client
+	mongoConfig   *mongo.Client
+	bulk          *elastic.BulkProcessor
+	bulkStats     *elastic.BulkProcessor
+	client        *elastic.Client
+	hsc           *httpServerCtx
+	fileWg        *sync.WaitGroup
+	indexWg       *sync.WaitGroup
+	processWg     *sync.WaitGroup
+	relateWg      *sync.WaitGroup
+	opsConsumed   chan bool
+	closeC        chan bool
+	doneC         chan int
+	enabled       bool
+	lastTs        primitive.Timestamp
+	lastTsSaved   primitive.Timestamp
+	tokens        bson.M
+	indexC        chan *gtm.Op
+	processC      chan *gtm.Op
+	fileC         chan *gtm.Op
+	relateC       chan *gtm.Op
+	filter        gtm.OpFilter
+	statusReqC    chan *statusRequest
+	sigH          *sigHandler
 }
 
 type sigHandler struct {
@@ -4376,24 +4378,32 @@ func (ic *indexClient) buildTimestampGen() gtm.TimestampGenerator {
 		}
 	} else if config.Resume {
 		after = func(client *mongo.Client, options *gtm.Options) (primitive.Timestamp, error) {
-			var ts primitive.Timestamp
-			var err error
-			col := client.Database(config.ConfigDatabaseName).Collection("monstache")
-			result := col.FindOne(context.Background(), bson.M{
-				"_id": config.ResumeName,
-			})
-			if err = result.Err(); err == nil {
-				doc := make(map[string]interface{})
-				if err = result.Decode(&doc); err == nil {
-					if doc["ts"] != nil {
-						ts = doc["ts"].(primitive.Timestamp)
-						ts.I++
+			tsChan := ic.oplogResumtTs.GetResumeTimestamp(func() primitive.Timestamp {
+				var ts primitive.Timestamp
+				var err error
+				col := client.Database(config.ConfigDatabaseName).Collection("monstache")
+				result := col.FindOne(context.Background(), bson.M{
+					"_id": config.ResumeName,
+				})
+				if err = result.Err(); err == nil {
+					doc := make(map[string]interface{})
+					if err = result.Decode(&doc); err == nil {
+						if doc["ts"] != nil {
+							ts = doc["ts"].(primitive.Timestamp)
+							ts.I++
+						}
 					}
 				}
-			}
-			if ts.T == 0 {
-				ts, _ = gtm.LastOpTimestamp(client, options)
-			}
+
+				if ts.T == 0 {
+					ts, err = gtm.LastOpTimestamp(client, options)
+				}
+
+				return ts
+			})
+
+			ts := <-tsChan
+
 			infoLog.Printf("Resuming from timestamp %+v", ts)
 			return ts, nil
 		}
@@ -4579,8 +4589,11 @@ func (ic *indexClient) buildGtmOptions() *gtm.Options {
 
 func (ic *indexClient) startListen() {
 	config := ic.config
+	conns := ic.buildConnections()
+	ic.oplogResumtTs = internal.NewOplogResumeTs(len(conns), infoLog)
 	gtmOpts := ic.buildGtmOptions()
-	ic.gtmCtx = gtm.StartMulti(ic.buildConnections(), gtmOpts)
+	ic.gtmCtx = gtm.StartMulti(conns, gtmOpts)
+
 	if config.readShards() && !config.DisableChangeEvents {
 		ic.gtmCtx.AddShardListener(ic.mongoConfig, gtmOpts, config.makeShardInsertHandler())
 	}
